@@ -46,6 +46,7 @@ import { scheduleGatewayUpdateCheck } from "../infra/update-startup.js";
 import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/diagnostic.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
+import { onPluginEvent } from "../plugins/plugin-events.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { createPluginRuntime } from "../plugins/runtime/index.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
@@ -745,6 +746,20 @@ export async function startGatewayServer(
         broadcast("heartbeat", evt, { dropIfSlow: true });
       });
 
+  // Subscribe to plugin events for UI broadcast
+  const pluginEventUnsub = onPluginEvent((evt) => {
+    log.info(`[plugin:${evt.pluginId}] Broadcasting event: ${evt.eventType}`);
+    broadcast(
+      "plugin_event",
+      {
+        plugin: evt.pluginId,
+        type: evt.eventType,
+        ...evt.payload,
+      },
+      { dropIfSlow: true },
+    );
+  });
+
   let heartbeatRunner: HeartbeatRunner = minimalTestGateway
     ? {
         stop: () => {},
@@ -1030,6 +1045,7 @@ export async function startGatewayServer(
     mediaCleanup,
     agentUnsub,
     heartbeatUnsub,
+    pluginEventUnsub,
     chatRunState,
     clients,
     configReloader,

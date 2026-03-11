@@ -215,6 +215,7 @@ function createWarningLogger(warnings: string[]) {
     info: () => {},
     warn: (msg: string) => warnings.push(msg),
     error: () => {},
+    debug: () => {},
   };
 }
 

@@ -34,6 +34,8 @@ import type {
   PluginHookMessageSentEvent,
   PluginHookName,
   PluginHookRegistration,
+  PluginHookResolveModelEvent,
+  PluginHookResolveModelResult,
   PluginHookSessionContext,
   PluginHookSessionEndEvent,
   PluginHookSessionStartEvent,
@@ -50,6 +52,7 @@ import type {
   PluginHookToolResultPersistResult,
   PluginHookBeforeMessageWriteEvent,
   PluginHookBeforeMessageWriteResult,
+  PluginHookResolveModelContext,
 } from "./types.js";
 
 // Re-export types for consumers
@@ -57,6 +60,8 @@ export type {
   PluginHookAgentContext,
   PluginHookBeforeAgentStartEvent,
   PluginHookBeforeAgentStartResult,
+  PluginHookResolveModelEvent,
+  PluginHookResolveModelResult,
   PluginHookBeforeModelResolveEvent,
   PluginHookBeforeModelResolveResult,
   PluginHookBeforePromptBuildEvent,
@@ -126,6 +131,14 @@ function getHooksForName<K extends PluginHookName>(
 export function createHookRunner(registry: PluginRegistry, options: HookRunnerOptions = {}) {
   const logger = options.logger;
   const catchErrors = options.catchErrors ?? true;
+
+  const mergeResolveModel = (
+    acc: PluginHookResolveModelResult | undefined,
+    next: PluginHookResolveModelResult,
+  ): PluginHookResolveModelResult => ({
+    ...acc,
+    ...next,
+  });
 
   const mergeBeforeModelResolve = (
     acc: PluginHookBeforeModelResolveResult | undefined,
@@ -266,6 +279,21 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
   // =========================================================================
   // Agent Hooks
   // =========================================================================
+
+  /**   * Run resolve_model hook.
+   * Allows plugins to completely override model, session, and prompt.
+   */
+  async function runResolveModel(
+    event: PluginHookResolveModelEvent,
+    ctx: PluginHookResolveModelContext,
+  ): Promise<PluginHookResolveModelResult | undefined> {
+    return runModifyingHook<"resolve_model", PluginHookResolveModelResult>(
+      "resolve_model",
+      event,
+      ctx,
+      mergeResolveModel,
+    );
+  }
 
   /**
    * Run before_model_resolve hook.
@@ -723,6 +751,9 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
   }
 
   return {
+    // guardclaw hooks
+    runResolveModel,
+    // guardclaw hooks
     // Agent hooks
     runBeforeModelResolve,
     runBeforePromptBuild,

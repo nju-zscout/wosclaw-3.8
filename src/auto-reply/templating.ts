@@ -45,6 +45,7 @@ export type MsgContext = {
   From?: string;
   To?: string;
   SessionKey?: string;
+  OriginalSessionKey?: string;
   /** Provider account id (multi-account). */
   AccountId?: string;
   ParentSessionKey?: string;
@@ -116,6 +117,11 @@ export type MsgContext = {
   GroupSpace?: string;
   GroupMembers?: string;
   GroupSystemPrompt?: string;
+  /**
+   * Privacy-specific system prompt (e.g., from GuardClaw plugin).
+   * Injected when handling sensitive content with local models.
+   */
+  PrivacySystemPrompt?: string;
   /** Untrusted metadata that must not be treated as system instructions. */
   UntrustedContext?: string[];
   /** System-attached provenance for the current inbound message. */
@@ -177,6 +183,11 @@ export type MsgContext = {
    * Used for hook confirmation messages like "Session context saved to memory".
    */
   HookMessages?: string[];
+  /**
+   * Flag indicating this message was redirected to a privacy guard session.
+   * When true, the UI should show a placeholder instead of the actual message content.
+   */
+  PrivacyRedirect?: boolean;
 };
 
 export type FinalizedMsgContext = Omit<MsgContext, "CommandAuthorized"> & {

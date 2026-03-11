@@ -38,6 +38,10 @@ export type GetReplyOptions = {
   typingPolicy?: TypingPolicy;
   /** Force-disable typing indicators for this run (system/internal/cross-channel routes). */
   suppressTyping?: boolean;
+  /** Temporary provider override for this specific run. */
+  providerOverride?: string;
+  /** Temporary model override for this specific run. */
+  modelOverride?: string;
   /** Resolved heartbeat model override (provider/model string from merged per-agent config). */
   heartbeatModelOverride?: string;
   /** Controls bootstrap workspace context injection (default: full). */

@@ -118,6 +118,7 @@ export const GATEWAY_EVENTS = [
   "health",
   "heartbeat",
   "cron",
+  "plugin_event", // Generic plugin event broadcast
   "node.pair.requested",
   "node.pair.resolved",
   "node.invoke.request",

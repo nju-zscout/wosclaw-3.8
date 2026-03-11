@@ -204,7 +204,8 @@ export async function getReplyFromConfig(
     parentSessionKey: sessionCtx.ParentSessionKey,
   });
   const hasSessionModelOverride = Boolean(
-    sessionEntry.modelOverride?.trim() || sessionEntry.providerOverride?.trim(),
+    sessionEntry.modelOverride?.trim() || sessionEntry.providerOverride?.trim() ||
+    opts?.modelOverride?.trim() || opts?.providerOverride?.trim(),
   );
   if (!hasResolvedHeartbeatModelOverride && !hasSessionModelOverride && channelModelOverride) {
     const resolved = resolveModelRefFromString({
@@ -216,6 +217,16 @@ export async function getReplyFromConfig(
       provider = resolved.ref.provider;
       model = resolved.ref.model;
     }
+  }
+
+  // Hook overrides have the highest non-directive priority
+  const hookProviderOverride = opts?.providerOverride?.trim();
+  if (hookProviderOverride) {
+    provider = hookProviderOverride;
+  }
+  const hookModelOverride = opts?.modelOverride?.trim();
+  if (hookModelOverride) {
+    model = hookModelOverride;
   }
 
   const directiveResult = await resolveReplyDirectives({

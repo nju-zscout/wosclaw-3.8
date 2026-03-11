@@ -21,6 +21,14 @@ export type CompactionIndicatorStatus = {
   completedAt: number | null;
 };
 
+export type PrivacyIndicatorStatus = {
+  active: boolean;
+  level: "S2" | "S3" | null;
+  model: string | null;
+  provider: string | null;
+  activatedAt: number | null;
+};
+
 export type FallbackIndicatorStatus = {
   phase?: "active" | "cleared";
   selected: string;
@@ -41,6 +49,7 @@ export type ChatProps = {
   canAbort?: boolean;
   compactionStatus?: CompactionIndicatorStatus | null;
   fallbackStatus?: FallbackIndicatorStatus | null;
+  privacyStatus?: PrivacyIndicatorStatus | null;
   messages: unknown[];
   toolMessages: unknown[];
   streamSegments: Array<{ text: string; ts: number }>;
@@ -89,6 +98,58 @@ const FALLBACK_TOAST_DURATION_MS = 8000;
 function adjustTextareaHeight(el: HTMLTextAreaElement) {
   el.style.height = "auto";
   el.style.height = `${el.scrollHeight}px`;
+}
+
+const GUARDCLAW_INDICATOR_DURATION_MS = 8000;
+
+function renderPrivacyIndicator(status: PrivacyIndicatorStatus | null | undefined) {
+  if (!status || !status.active) {
+    return nothing;
+  }
+
+  // Auto-hide after duration
+  if (status.activatedAt && Date.now() - status.activatedAt > GUARDCLAW_INDICATOR_DURATION_MS) {
+    return nothing;
+  }
+
+  const isS3 = status.level === "S3";
+  const levelLabel = isS3 ? "High Sensitivity" : "Moderate Sensitivity";
+  const levelEmoji = isS3 ? "🔒" : "🛡️";
+  // S3 uses danger (red), S2 uses warn (amber) — matching existing callout semantics
+  const borderColor = isS3 ? "var(--danger)" : "var(--warn)";
+  const labelColor = isS3 ? "var(--danger)" : "var(--warn)";
+  const pulseColor = isS3 ? "var(--danger-subtle)" : "var(--warn-subtle)";
+
+  return html`
+    <div class="callout privacy-indicator privacy-indicator--active" style="
+      background: var(--secondary);
+      border: 1px solid ${borderColor};
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: privacy-pulse 2s ease-in-out infinite;
+    ">
+      <span style="font-size: 24px;">${levelEmoji}</span>
+      <div style="flex: 1;">
+        <div style="font-weight: 600; color: ${labelColor}; margin-bottom: 2px;">
+          Privacy Guard Active · ${levelLabel}
+        </div>
+        <div style="font-size: 12px; color: var(--muted);">
+          Using local model: <code style="background: var(--bg-muted); padding: 2px 6px; border-radius: var(--radius-sm); color: var(--ok);">${status.model || "ollama/openbmb/minicpm4.1"}</code>
+        </div>
+      </div>
+      <span style="font-size: 10px; color: var(--muted-strong); text-transform: uppercase; letter-spacing: 1px;">Privacy Protected</span>
+    </div>
+    <style>
+      @keyframes privacy-pulse {
+        0%, 100% { box-shadow: 0 0 10px ${pulseColor}; }
+        50% { box-shadow: 0 0 20px ${pulseColor}; }
+      }
+    </style>
+  `;
 }
 
 function renderCompactionIndicator(status: CompactionIndicatorStatus | null | undefined) {
@@ -320,6 +381,9 @@ export function renderChat(props: ChatProps) {
       ${props.disabledReason ? html`<div class="callout">${props.disabledReason}</div>` : nothing}
 
       ${props.error ? html`<div class="callout danger">${props.error}</div>` : nothing}
+
+      ${renderCompactionIndicator(props.compactionStatus)}
+      ${renderPrivacyIndicator(props.privacyStatus)}
 
       ${
         props.focusMode

@@ -43,6 +43,7 @@ import type {
   StatusSummary,
   UpdateAvailable,
 } from "./types.ts";
+import type { PrivacyIndicatorStatus } from "./views/chat.ts";
 
 function isGenericBrowserFetchFailure(message: string): boolean {
   return /^(?:typeerror:\s*)?(?:fetch failed|failed to fetch)$/i.test(message.trim());
@@ -95,6 +96,7 @@ type GatewayHost = {
   execApprovalQueue: ExecApprovalRequest[];
   execApprovalError: string | null;
   updateAvailable: UpdateAvailable | null;
+  privacyStatus: PrivacyIndicatorStatus | null;
 };
 
 type SessionDefaultsSnapshot = {
@@ -363,6 +365,44 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
       host.presenceEntries = payload.presence;
       host.presenceError = null;
       host.presenceStatus = null;
+    }
+    return;
+  }
+
+  // Handle generic plugin events
+  if (evt.event === "plugin_event") {
+    const payload = evt.payload as
+      | {
+          plugin?: string;
+          type?: string;
+          active?: boolean;
+          level?: "S2" | "S3";
+          model?: string;
+          provider?: string;
+          reason?: string;
+          sessionKey?: string;
+          originalSessionKey?: string;
+        }
+      | undefined;
+
+    console.log("[gateway] Received plugin_event:", payload);
+
+    // Handle privacy plugin events (e.g., guardclaw)
+    if (payload?.plugin === "guardclaw" && payload.type === "privacy_activated") {
+      console.log("[gateway] Handling privacy_activated event from guardclaw:", payload);
+      // Update privacy status indicator
+      (host as unknown as { privacyStatus: PrivacyIndicatorStatus | null }).privacyStatus = {
+        active: payload.active ?? true,
+        level: payload.level ?? null,
+        model: payload.model ?? null,
+        provider: payload.provider ?? null,
+        activatedAt: Date.now(),
+      };
+
+      // Auto-clear after 8 seconds
+      setTimeout(() => {
+        (host as unknown as { privacyStatus: PrivacyIndicatorStatus | null }).privacyStatus = null;
+      }, 8000);
     }
     return;
   }

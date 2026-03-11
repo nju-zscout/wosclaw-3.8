@@ -20,7 +20,7 @@ export type { PluginRuntime } from "./runtime/types.js";
 export type { AnyAgentTool } from "../agents/tools/common.js";
 
 export type PluginLogger = {
-  debug?: (message: string) => void;
+  debug: (message: string, context?: Record<string, unknown>) => void;
   info: (message: string) => void;
   warn: (message: string) => void;
   error: (message: string) => void;
@@ -303,6 +303,12 @@ export type OpenClawPluginApi = {
     handler: PluginHookHandlerMap[K],
     opts?: { priority?: number },
   ) => void;
+  /**
+   * Emit a custom event that will be broadcast to Gateway WebSocket clients.
+   * Use this to notify the UI of plugin-specific state changes.
+   * Events are broadcast as { plugin: pluginId, type: eventType, ...payload }
+   */
+  emitEvent: (eventType: string, payload: Record<string, unknown>) => void;
 };
 
 export type PluginOrigin = "bundled" | "global" | "workspace" | "config";
@@ -320,6 +326,7 @@ export type PluginDiagnostic = {
 
 export type PluginHookName =
   | "before_model_resolve"
+  | "resolve_model"
   | "before_prompt_build"
   | "before_agent_start"
   | "llm_input"
@@ -346,6 +353,7 @@ export type PluginHookName =
 
 export const PLUGIN_HOOK_NAMES = [
   "before_model_resolve",
+  "resolve_model",
   "before_prompt_build",
   "before_agent_start",
   "llm_input",
@@ -417,6 +425,60 @@ export type PluginHookBeforeModelResolveResult = {
   modelOverride?: string;
   /** Override the provider for this agent run. E.g. "ollama" */
   providerOverride?: string;
+};
+
+
+// resolve_model hook - allows plugins to override model selection
+export type PluginHookResolveModelContext = {
+  agentId?: string;
+  sessionKey?: string;
+  channel?: string;
+  workspaceDir?: string;
+  messageProvider?: string;
+};
+
+export type PluginHookResolveModelEvent = {
+  /** The message that triggered this agent turn */
+  message?: string;
+  /** Current provider selection */
+  provider: string;
+  /** Current model selection */
+  model: string;
+  /** Whether this is a default selection (not user-overridden) */
+  isDefault: boolean;
+};
+
+export type PluginHookResolveModelResult = {
+  /** Override provider (e.g., "ollama") */
+  provider?: string;
+  /** Override model (e.g., "llama3.2:3b") */
+  model?: string;
+  /** Reason for override (for logging) */
+  reason?: string;
+  /**
+   * Override session key for subsession isolation.
+   * When provided, the message will be processed in the specified session
+   * instead of the original session. This is useful for privacy isolation
+   * where sensitive content should be handled in a separate session.
+   */
+  sessionKey?: string;
+  /**
+   * If true, the response from the redirected session should be delivered
+   * back to the original session's chat context.
+   */
+  deliverToOriginal?: boolean;
+  /**
+   * Extra system prompt to inject for this request.
+   */
+  extraSystemPrompt?: string;
+  /**
+   * Override the user prompt sent to the agent.
+   */
+  userPromptOverride?: string;
+  /**
+   * If set, skip the normal agent run entirely and deliver this text as the response.
+   */
+  directResponse?: string;
 };
 
 // before_prompt_build hook
@@ -557,6 +619,8 @@ export type PluginHookAfterCompactionEvent = {
 
 // Message context
 export type PluginHookMessageContext = {
+  sessionKey?: string;
+  agentId?: string;
   channelId: string;
   accountId?: string;
   conversationId?: string;
@@ -641,6 +705,7 @@ export type PluginHookToolResultPersistContext = {
 };
 
 export type PluginHookToolResultPersistEvent = {
+  sessionKey?: string;
   toolName?: string;
   toolCallId?: string;
   /**
@@ -785,6 +850,10 @@ export type PluginHookGatewayStopEvent = {
 
 // Hook handler types mapped by hook name
 export type PluginHookHandlerMap = {
+  resolve_model: (
+    event: PluginHookResolveModelEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<PluginHookResolveModelResult | void> | PluginHookResolveModelResult | void;
   before_model_resolve: (
     event: PluginHookBeforeModelResolveEvent,
     ctx: PluginHookAgentContext,

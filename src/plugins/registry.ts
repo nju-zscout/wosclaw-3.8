@@ -12,6 +12,7 @@ import type { HookEntry } from "../hooks/types.js";
 import { resolveUserPath } from "../utils.js";
 import { registerPluginCommand } from "./commands.js";
 import { normalizePluginHttpPath } from "./http-path.js";
+import { emitPluginEvent } from "./plugin-events.js";
 import { findOverlappingPluginHttpRoute } from "./http-route-overlap.js";
 import type { PluginRuntime } from "./runtime/types.js";
 import {
@@ -569,7 +570,7 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
     info: logger.info,
     warn: logger.warn,
     error: logger.error,
-    debug: logger.debug,
+    debug: logger.debug ?? ((msg) => {}),
   });
 
   const createApi = (
@@ -587,7 +588,7 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
       description: record.description,
       source: record.source,
       config: params.config,
-      pluginConfig: params.pluginConfig,
+      pluginConfig: params.pluginConfig || {},
       runtime: registryParams.runtime,
       logger: normalizeLogger(registryParams.logger),
       registerTool: (tool, opts) => registerTool(record, tool, opts),
@@ -604,6 +605,9 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
       resolvePath: (input: string) => resolveUserPath(input),
       on: (hookName, handler, opts) =>
         registerTypedHook(record, hookName, handler, opts, params.hookPolicy),
+      emitEvent: (eventType: string, payload: Record<string, unknown>) => {
+        emitPluginEvent(record.id, eventType, payload);
+      },
     };
   };
 
