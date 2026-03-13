@@ -56,6 +56,15 @@ export type PrivacyConfig = {
     /** Base directory for session histories (default: ~/.openclaw) */
     baseDir?: string;
   };
+  debug?: {
+    /**
+     * When true, intercepts globalThis.fetch and writes all LLM request/response
+     * bodies to disk as JSON/text files in the current working directory.
+     * WARNING: This logs sensitive data to disk. Only enable for local debugging.
+     * Default: false
+     */
+    interceptLlmRequests?: boolean;
+  };
 };
 
 export type DetectionContext = {

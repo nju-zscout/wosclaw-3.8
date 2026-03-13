@@ -66,63 +66,79 @@ function getGuardAgentSystemPrompt(): string {
  * Register all GuardClaw hooks
  */
 export function registerHooks(api: OpenClawPluginApi): void {
-  // [NEW] Monkey-patch globalThis.fetch to log the actual HTTP body sent to LLM
-  if (!(globalThis as any).__fetchIntercepted) {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (...args) => {
-      const url = args[0] as string | URL | Request;
-      const opts = args[1] as RequestInit | undefined;
-      const urlString = url.toString();
-      const reqId = Date.now();
-      const isLLM =
-        urlString.includes("v1/chat/completions") ||
-        urlString.includes("anthropic") ||
-        urlString.includes("googleapis.com/v1/models");
+  // Conditionally intercept globalThis.fetch to log LLM request/response bodies to disk.
+  // Only enabled when privacy.debug.interceptLlmRequests = true in plugin config.
+  // WARNING: This writes all LLM payloads (including sensitive content) to disk.
+  // Never enable in production.
+  const privacyConfigForDebug = getPrivacyConfigFromApi(api);
+  if (privacyConfigForDebug.debug?.interceptLlmRequests === true) {
+    if (!(globalThis as any).__fetchIntercepted) {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (...args: Parameters<typeof fetch>) => {
+        const url = args[0] as string | URL | Request;
+        const opts = args[1] as RequestInit | undefined;
+        const urlString = url.toString();
+        const reqId = Date.now();
+        const isLLM =
+          urlString.includes("v1/chat/completions") ||
+          urlString.includes("anthropic") ||
+          urlString.includes("googleapis.com/v1/models");
 
-      // Log outgoing requests to standard LLM endpoints (OpenAI, Anthropic, etc)
-      if (isLLM) {
-        try {
-          if (opts?.body) {
-            let bodyStr = opts.body.toString();
-            if (opts.body instanceof Uint8Array || Buffer.isBuffer(opts.body)) {
-              bodyStr = new TextDecoder().decode(opts.body);
+        if (isLLM) {
+          try {
+            if (opts?.body) {
+              let bodyStr =
+                opts.body instanceof Uint8Array || Buffer.isBuffer(opts.body)
+                  ? new TextDecoder().decode(opts.body as Uint8Array)
+                  : opts.body.toString();
+              const bodyJson = JSON.parse(bodyStr);
+              // oxlint-disable-next-line typescript/no-require-imports
+              const fs = require("node:fs") as typeof import("node:fs");
+              // oxlint-disable-next-line typescript/no-require-imports
+              const nodePath = require("node:path") as typeof import("node:path");
+              const reqFileName = nodePath.join(
+                process.cwd(),
+                `llm_request_body_${reqId}.json`,
+              );
+              fs.writeFileSync(reqFileName, JSON.stringify(bodyJson, null, 2), "utf8");
+              api.logger.info(
+                `[GuardClaw][debug] LLM request body written to: ${reqFileName}`,
+              );
             }
-            const bodyJson = JSON.parse(bodyStr);
-            api.logger.info(`\n[GuardClaw] 🚀 [HTTP Request Body] -> ${urlString} :`);
-
-            // [NEW] 将请求 body 写入新文件
-            const fs = require("node:fs");
-            const path = require("node:path");
-            const reqFileName = path.join(process.cwd(), `llm_request_body_${reqId}.json`);
-            fs.writeFileSync(reqFileName, JSON.stringify(bodyJson, null, 2), "utf8");
-            api.logger.info(`[GuardClaw] 已将 HTTP Request Body 写入文件: ${reqFileName}`);
+          } catch (e) {
+            api.logger.error(`[GuardClaw][debug] Failed to write request body: ${String(e)}`);
           }
-        } catch (e) {
-          api.logger.error(`[GuardClaw] 解析或写入 HTTP Request Body 时出错: ${String(e)}`);
         }
-      }
 
-      // 发送真实请求
-      const response = await originalFetch(...args);
+        const response = await originalFetch(...args);
 
-      // 如果是大模型请求，克隆一份响应并写入文件
-      if (isLLM) {
-        try {
-          const resClone = response.clone();
-          const fs = require("node:fs");
-          const path = require("node:path");
-          const resText = await resClone.text();
-          const resFileName = path.join(process.cwd(), `llm_response_body_${reqId}.txt`);
-          fs.writeFileSync(resFileName, resText, "utf8");
-          api.logger.info(`[GuardClaw] 已将 HTTP Response 写入文件: ${resFileName}`);
-        } catch (e) {
-          api.logger.error(`[GuardClaw] 解析或写入 HTTP Response 时出错: ${String(e)}`);
+        if (isLLM) {
+          try {
+            const resClone = response.clone();
+            // oxlint-disable-next-line typescript/no-require-imports
+            const fs = require("node:fs") as typeof import("node:fs");
+            // oxlint-disable-next-line typescript/no-require-imports
+            const nodePath = require("node:path") as typeof import("node:path");
+            const resText = await resClone.text();
+            const resFileName = nodePath.join(process.cwd(), `llm_response_body_${reqId}.txt`);
+            fs.writeFileSync(resFileName, resText, "utf8");
+            api.logger.info(
+              `[GuardClaw][debug] LLM response body written to: ${resFileName}`,
+            );
+          } catch (e) {
+            api.logger.error(
+              `[GuardClaw][debug] Failed to write response body: ${String(e)}`,
+            );
+          }
         }
-      }
 
-      return response;
-    };
-    (globalThis as any).__fetchIntercepted = true;
+        return response;
+      };
+      (globalThis as any).__fetchIntercepted = true;
+      api.logger.warn(
+        "[GuardClaw][debug] LLM request interception ENABLED — all LLM payloads will be written to disk. Do NOT use in production.",
+      );
+    }
   }
 
   // Initialize memory directories on startup
@@ -968,6 +984,10 @@ function mergeWithDefaults(
       isolateGuardHistory:
         userConfig.session?.isolateGuardHistory ?? defaults.session?.isolateGuardHistory,
       baseDir: userConfig.session?.baseDir ?? defaults.session?.baseDir,
+    },
+    debug: {
+      interceptLlmRequests:
+        userConfig.debug?.interceptLlmRequests ?? defaults.debug?.interceptLlmRequests,
     },
   };
 }

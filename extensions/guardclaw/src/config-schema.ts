@@ -82,6 +82,11 @@ export const guardClawConfigSchema = Type.Object({
           baseDir: Type.Optional(Type.String()),
         }),
       ),
+      debug: Type.Optional(
+        Type.Object({
+          interceptLlmRequests: Type.Optional(Type.Boolean()),
+        }),
+      ),
     }),
   ),
 });
@@ -127,5 +132,8 @@ export const defaultPrivacyConfig = {
   session: {
     isolateGuardHistory: true,
     baseDir: "~/.openclaw",
+  },
+  debug: {
+    interceptLlmRequests: false,
   },
 };
